@@ -1,0 +1,19 @@
+Client,JobState,Policy,Schedule,StartTime,EndTime,Errorcode,Message 
+sacvl1422-bk.sac.flex.com,Job active,Oracle_LDR_AM3P1_CL5,Daily,4/18/2023 2:00,NA,NA,Backup in progress
+sacvl1408-bk.sac.flex.com,Job active,Oracle_LDR_WM7P1_CL5,Daily,4/18/2023 2:00,NA,NA,Backup in progress
+sacvl1376-bk.sac.flex.com,Job active,Oracle_LDR_BR1P1_CL5,Daily,4/18/2023 2:00,NA,NA,Backup in progress
+sacvl1358-bk.sac.flex.com,Job active,Oracle_LDR_AS3P1_CL5,Daily,4/18/2023 2:00,NA,NA,Backup in progress
+sacvl1316-bk.sac.flex.com,Job active,Oracle_LDR_WE3P1_CL5,Daily,4/18/2023 2:00,NA,NA,Backup in progress
+sacvl1428-bk.sac.flex.com,Job Done,Oracle_LDR_AM3P3_CL5,Daily,4/17/2023 12:30,4/17/2023 20:05,0,Successfully completed
+sacvl1362-bk.sac.flex.com,Job Done,Oracle_LDR_AS3P0_CL5,Daily,4/17/2023 12:30,4/17/2023 13:29,0,Successfully completed
+sacvl1420-bk.sac.flex.com,Job Done,Oracle_LDR_AM3P0_CL5,Daily,4/17/2023 12:30,4/17/2023 13:16,0,Successfully completed
+sacvl1394-bk.sac.flex.com,Job Done,Oracle_LDR_CE3P0_CL5,Daily,4/17/2023 12:30,4/17/2023 13:15,0,Successfully completed
+sacvl1425-bk.sac.flex.com,Job Done,Oracle_LDR_AM3P2_CL5,Daily,4/17/2023 10:00,4/17/2023 14:39,0,Successfully completed
+sacvl1396-bk.sac.flex.com,Job Done,Oracle_LDR_CE3P2_CL5,Daily,4/17/2023 10:00,4/17/2023 14:04,0,Successfully completed
+sacvl1360-bk.sac.flex.com,Job Done,Oracle_LDR_AS3P2_CL5,Daily,4/17/2023 10:00,4/17/2023 13:15,0,Successfully completed
+sacvl1395-bk.sac.flex.com,Job Done,Oracle_LDR_CE3P1_CL5,Daily,4/17/2023 2:00,4/17/2023 9:04,0,Successfully completed
+sacvl1422-bk.sac.flex.com,Job Done,Oracle_LDR_AM3P1_CL5,Daily,4/17/2023 2:00,4/17/2023 6:52,0,Successfully completed
+sacvl1408-bk.sac.flex.com,Job Done,Oracle_LDR_WM7P1_CL5,Daily,4/17/2023 2:00,4/17/2023 5:07,0,Successfully completed
+sacvl1376-bk.sac.flex.com,Job Done,Oracle_LDR_BR1P1_CL5,Daily,4/17/2023 2:00,4/17/2023 11:01,0,Successfully completed
+sacvl1358-bk.sac.flex.com,Job Done,Oracle_LDR_AS3P1_CL5,Daily,4/17/2023 2:00,4/17/2023 8:45,0,Successfully completed
+sacvl1316-bk.sac.flex.com,Job Done,Oracle_LDR_WE3P1_CL5,Daily,4/17/2023 2:00,4/17/2023 3:37,0,Successfully completed

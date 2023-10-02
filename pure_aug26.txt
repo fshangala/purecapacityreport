@@ -1,0 +1,415 @@
+from json.decoder import JSONDecoder
+from json.encoder import JSONEncoder
+from uuid import uuid4
+from pypureclient import pure1
+import datetime
+import csv
+import paramiko
+import re
+import mailer
+import base64
+import os
+
+conf = {
+    "private_key_file":"",
+    "private_key_password":"",
+    "app_id":"pure1:apikey:KDa4tEK8GIVtiLES",
+    "id_token":"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJwdXJlMTphcGlrZXk6S0RhNHRFSzhHSVZ0aUxFUyIsImlhdCI6MTY2MjczNjYxMywiZXhwIjoxNzI1ODk0ODAwfQ.GtpA5KQlO9d10Sv72jlsS655yoe9PW1S4V_pE1bs0U8TFoxLolcG8KREH3x3NJDJkUrF8oPCJGBQQd-gMZjxOBwNGl5sgRPqjLUwjHUDfFXZtyQsURMoNp6W5cR7M2g8RywCTRfxroS-b9EqZ5VhNpNtj_d6VLQN3sauvSkLbM5R0LraPNe37r7utexqce23xaQzfuCI0Z45zsRSi3tnVYJt-gSudP4h-DpqH8trCBPHIVQDkOsgtrg0kaeh0Ay5OfsJvZ_cEDa8zWUph933WN2c7uhkG-ohb6fbSxYCJyGVsBXWPhZwVoN8hbIgeQ0bT51T1V1HRObME83-w3fc9g",
+    "array_metrics_names":["array_total_capacity","array_volume_space","array_total_load", "array_data_reduction"],
+    "attempts":5,
+    "time_offset":24,
+    "byte_multiple":1099511627776,
+    "array_username":"YWRtaW5fZ3Nza3VsYXM=",
+    "array_password":"QXByQDIwMjM=",
+}
+
+class CapacityReport:
+    def __init__(self, config: dict):
+        self.use_token = False
+        self.client = None
+        self.attempts=config.get("attempts", 5)
+        self.time_offset=config.get("time_offset", 24)
+        self.array_metrics_names = config.get("array_metrics_names", None)
+        self.byte_multiple = config.get("byte_multiple", 1073741824)
+        self.app_id =config.get("app_id", None)
+        array_username = config.get("array_username", None)
+        array_password = config.get("array_password", None)
+
+        """self.sender_email = config.get("sender_email", None)
+        self.receiver_emails = config.get("receiver_emails", None)
+        self.mail_subject = config.get("mail_subject", None)
+        self.smtp_server = config.get("smtp_server", None)"""
+
+        self.ssh = paramiko.SSHClient()
+        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self.header = list()
+        self.filename = str(datetime.datetime.now().strftime("%Y-%m-%dT%H.%M.%S"))
+
+        if array_username:
+            un = base64.decodebytes(array_username.encode())
+            self.array_username = un.decode()
+        else:
+            self.array_username = array_username
+        
+        if array_password:
+            pswd = base64.decodebytes(array_password.encode())
+            self.array_password = pswd.decode()
+        else:
+            self.array_password = array_password
+        
+        self.header.append("array")
+        self.epoch = datetime.datetime.utcfromtimestamp(0)
+
+        self.start_time = self.unix_time_millis(datetime.datetime.now() - datetime.timedelta(hours=self.time_offset))
+        self.end_time= self.unix_time_millis(datetime.datetime.now())
+
+        if config.get("id_token", None):
+            self.use_token = True
+            self.id_token=config.get("id_token", None)
+
+        elif config.get("private_key_file", None) and config.get("private_key_password", None):
+            self.use_token = False
+            self.private_key_file=config.get("private_key_file", None)
+            self.private_key_password=config.get("private_key_password", None)
+        
+        else:
+            print("Cannot proceed with execution, either of the two, id_token or private_key_file, were not defined in the config.json file!")
+        
+        if self.connect():
+            self.get_metrics_items()
+        else:
+            print("API Client could not initialize.")
+
+        print("\nExiting application...")
+
+    def unix_time_millis(self, dt):
+        return int((dt - self.epoch).total_seconds() * 1000)
+    
+    def connect(self):
+        print("\nConnecting...")
+        try:
+            if self.use_token:
+                print("Using id_token")
+                self.client = pure1.Client(app_id=self.app_id,id_token=self.id_token)
+            else:
+                print("Using private key file")
+                self.client = pure1.Client(private_key_file=self.private_key_file, private_key_password=self.private_key_password, app_id=self.app_id)
+        except Exception as e:
+            print("Connection faild: "+str(e))
+            self.client = None
+            return False
+        else:
+            return True
+    
+    def get_arrays(self):
+        arrays = list()
+        for x in range(self.attempts):
+            if x > 1:
+                print("Retrying...")
+                print("Attempt "+str(x))
+            else:
+                print("\nGetting arrays...")
+                print("Attempt "+str(x))
+                
+            try:
+                response=self.client.get_arrays()
+            except Exception as e:
+                print("Faild to get arrays: "+str(e))
+            else:
+                arrays = list(response.items)
+                break
+
+        return arrays
+                
+    
+    def get_metrics_items(self):
+        header = self.header.copy()
+        metrics_items=list()
+        body = list()
+        
+        arrays = self.get_arrays()
+        if arrays:
+            for array in arrays:
+                #if array.name == "SACSA044" or array.name == "SGDSA025":
+                #    continue
+                row = list()
+                row.append(array.name)
+                print("\n"+array.name)
+                metrics_items = list()
+                for x in range(self.attempts):
+                    if x > 1:
+                        print("Retrying...")
+                        print("Attempt "+str(x))
+                    else:
+                        print(f"Getting array:{array.name} metrics...")
+                        print("Attempt "+str(x))
+                        
+                    try:
+                        response = self.client.get_metrics_history(aggregation='avg',names=self.array_metrics_names,resource_ids=array.id, resolution=86400000, start_time=self.start_time, end_time=self.end_time)
+                    except Exception as e:
+                        print("Faild to get array metrics: "+str(e))
+                    else:
+                        metrics_items = list(response.items)
+                        break
+
+                if metrics_items:
+                    for metric_item in metrics_items:
+                        if len(header) < len(self.array_metrics_names)+1:
+                            header.append(metric_item.name)
+                        #mail_to_send += "\n"+metric_item.name+": "+JSONEncoder().encode(metric_item.data)
+                        print("\n"+metric_item.name+": "+JSONEncoder().encode(metric_item.data))
+
+                        if len(metric_item.data) > 0:
+                            if metric_item.name == "array_data_reduction":
+                                value = round(float(metric_item.data[0][1]), 1)
+                                row.append(value)
+                            elif metric_item.name == "array_total_load":
+                                if len(metric_item.data) > 1:
+                                    value = (float(metric_item.data[0][1]) + float(metric_item.data[1][1]))/2
+                                else:
+                                    value = 0
+
+                                row.append(round(value*100, 2))
+                            else:
+                                byte_converted = float(metric_item.data[0][1]) / self.byte_multiple
+                                row.append(round(byte_converted, 2))
+                        else:
+                            print(metric_item.name+": "+"Empty")
+                            row.append("Empty")
+                            
+                    if len(header) < len(self.array_metrics_names)+2:
+                        header.append("provisioned_size")
+                        header.append("total")
+
+                    try:
+                        #if array.name == "SACSA044" or array.name == "SGDSA025":
+                        #    continue
+                        self.ssh.connect(array.fqdn, 22, self.array_username, self.array_password, look_for_keys=False)
+                        stdin, stdout, stderr = self.ssh.exec_command('purearray list --space')
+                    except Exception as e:
+                        row.append("failed")
+                        row.append("failed")
+                        print("Failed to connect to array via ssh: "+str(e))
+                    else:
+                        if array.name == "SACSA044" or array.name == "SGDSA025":
+                            array_space = self.handle_stdout(stdout,True)
+                        else:
+                            array_space = self.handle_stdout(stdout,False)
+                        row.append(array_space["provisioned_size"])
+                        row.append(array_space["total"])
+                        row.append(array_space["snapshot"])
+                        self.ssh.close()
+
+
+                body.append(row)
+            
+            processed_report = self.process_report(body)
+
+            for x in range(self.attempts):
+                if x > 1:
+                    print("Retrying...")
+                    print("Attempt "+str(x))
+                else:
+                    print("\nWriting data to csv...")
+                    print("Attempt "+str(x))
+
+                self.filename="Pure-"+str(datetime.datetime.now().strftime("%Y-%m-%dT%H.%M.%S"))
+
+                try:
+                    with open(os.path.join(os.path.abspath(os.path.dirname(__file__)), self.filename+"_report.csv"), "w", encoding="UTF8") as f:
+                        writer = csv.writer(f)
+                        writer.writerow(processed_report["header"])
+                        writer.writerows(processed_report["body"])
+                except Exception as e:
+                    print("Faild to prepare file: "+str(e))
+                else:
+                    print("Done")
+
+        else:
+            print("No arrays returned.")
+    def to_float(self,value:str):
+        try:
+            v = float(value)
+        except Exception as e:
+            print(e)
+            v = 0.0
+        
+        return v
+
+    def handle_stdout(self, stdout,isflashblade)->dict:
+        print("#")
+        print(stdout)
+        output_lines = stdout.readlines()
+        print(output_lines)
+        res = re.sub(' +', ' ', output_lines[1])
+        values = res.split(" ")
+        print(values[-1][:-2])
+
+        
+        FlashArray = {
+            'name': values[0],
+            'capacity': self.to_float(values[1][:-1]),
+            'parity': values[2],
+            'snapshot': self.to_float(values[-5][:-1]),
+            'provisioned_size': self.to_float(values[3][:-1]),
+            'total': self.to_float(values[-1][:-2])
+            
+        }
+        
+        if isflashblade:
+            FlashArray["snapshot"]=self.to_float(values[7][:-1])
+
+        if FlashArray["total"] != 0.0:
+            if values[-1][-2] == "G":
+                FlashArray["total"] = self.to_float(values[3][:-1])/1024
+            elif values[-1][-2] == "M":
+                FlashArray["total"] = self.to_float(values[3][:-1])/1048576
+
+            if values[3][-1] == "G":
+                FlashArray["provisioned_size"] = self.to_float(values[3][:-1])/1024
+            elif values[3][-1] == "M":
+                FlashArray["provisioned_size"] = self.to_float(values[3][:-1])/1048576
+
+            if values[-5][-1] == "G":
+                FlashArray["snapshot"] = self.to_float(values[-5][:-1])/1024
+            elif values[-5][-1] == "M":
+                FlashArray["snapshot"] = self.to_float(values[-5][:-1])/1048576
+        return FlashArray
+            
+    def process_report(self, body:list):
+        report = [
+            "Array",
+            "Usable Space (TB)",
+            "Effective Capacity (TB)",
+            "Over prov (%)",
+            "Allocated Space (TB)",
+            "Used Space (TB)",
+            "Snapshot (TB)",
+            "Provisioned Space (%)",
+            "Space Used (%)",
+            "Snapshot Used (%)",
+            "Data Reduction (Unit)",
+            "Array Load",
+            "Vendor",
+            "Model"
+        ]
+        report_body = list()        
+        for row in body:
+            report_row = list()
+
+            #Array name
+            report_row.append(row[0])
+
+            #Usable Space
+            report_row.append(row[2])
+            
+            #Effective Capacity
+            if type(report_row[1]) == float:
+                if report_row[0] == "SACSA044" or report_row[0] == "SGDSA025":
+                    report_row.append(report_row[1]*1)
+                else:
+                    report_row.append(report_row[1]*4)
+            else:
+                report_row.append("null")
+
+            #Over prov
+            if type(report_row[1]) == float and type(row[5]) == float:
+                if report_row[0] == "SACSA044" or report_row[0] == "SGDSA025":
+                    report_row.append("null")
+                else:
+                    over_prov = (row[5]/report_row[1])*100
+                    report_row.append(round(over_prov, 2))
+            else:
+                report_row.append("null")
+
+            #Allocated Space
+            if type(report_row[1]) == float and type(report_row[3]) == float:
+                if report_row[0] == "SACSA044" or report_row[0] == "SGDSA025":
+                    report_row.append("null")
+                else:
+                    allocated_space = report_row[3]*report_row[1]/100
+                    report_row.append(round(allocated_space, 2))
+            else:
+                report_row.append("null")
+            
+            #Used Space
+            if type(row[6]) == float:
+                report_row.append(round(row[6], 2))
+            else:
+                report_row.append(row[6])
+            
+            #Snapshot
+                      
+            if type(row[-1]) == float:
+                report_row.append(round(row[-1], 2))
+            else:
+                report_row.append(row[-1])
+
+            #Provisioned Space
+            if type(report_row[2]) == float and type(report_row[4]) == float:
+                if report_row[0] == "SACSA044" or report_row[0] == "SGDSA025":
+                    report_row.append("null")
+                else:
+                    provisioned_space = (report_row[4]/report_row[2])*100
+                    report_row.append(round(provisioned_space, 2))
+            else:
+                report_row.append("null")
+
+            #Space Used
+            if type(report_row[1]) == float and type(report_row[5]) == float:
+                space_used = (report_row[5]/report_row[1])*100
+                report_row.append(round(space_used, 2))
+            else:
+                report_row.append("null")
+
+            #Snapshot Used
+            if type(report_row[1]) == float and type(report_row[6]) == float:
+                snapshot_used = (report_row[6]/report_row[1])*100
+                report_row.append(round(snapshot_used, 2))
+            else:
+                report_row.append("null") 
+
+            #Array Data Reduction
+            report_row.append(row[1])           
+
+            #Array Load
+            report_row.append(row[4])
+
+            #Vendor
+            report_row.append("Pure")
+
+            #Model
+            report_row.append(self.getArrayModel(row[0]))
+            
+            report_body.append(report_row)
+        
+        return {"header": report, "body": report_body}
+    
+    def getArrayModel(self,array):
+        arrayModels = {
+            "SACSA038":"FA-X90R3",
+            "DUCSA008":"FA-X50R2",
+            "SACSA040":"FA-X90R3",
+            "SACSA041":"FA-X90R3",
+            "SACSA042":"FA-X90R3",
+            "SACSA043":"FA-C60",
+            "SACSA044":"FlashBlade",
+            "SGDSA025":"FlashBlade",
+            "sgdsa026":"FA-X90R3",
+            "TIMSA011":"FA-X50R3",
+            "PTPSA001":"FA-X20R3",
+            "TIMSA012":"FA-X50R3",
+            "SRISA003" :"FA-X50R3",
+            "PNASA201" : "FA-X20R3",
+            "PNASA202" :"FA-X20R3",
+            "PNASA102" :"FA-X20R3",
+            "PNASA502" :"FA-X20R3",
+            "sacsa045" :"FA-C60R3",
+            "CGDSA002" :"FA-X20R3",
+            "DUCSA009" :"FA-C60R3",
+            "SGDSA029" :"FA-X90R3",
+            "SNISA002" :"FA-X20R3"
+        }
+
+        return arrayModels.get(array, "?")
+

@@ -1,0 +1,5 @@
+admin_gsskulas@SACSA043> purearray list --space
+Name      Capacity  Parity  Provisioned Size  Thin Provisioning  Data Reduction  Total Reduction  Unique  Snapshots  Shared  System  Replication  Total
+SACSA043  224.29T   100%    619884G           64%                3.4 to 1        9.5 to 1         57.53T  57.50T     16.52T  0.00    0.00         131.55T
+admin_gsskulas@SACSA043>
+
